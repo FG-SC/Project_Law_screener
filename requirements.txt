@@ -1,5 +1,4 @@
 matplotlib
-distutils
 pkgutil
 pkg-config
 numpy==1.24.3
