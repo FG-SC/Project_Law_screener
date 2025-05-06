@@ -31,14 +31,20 @@ def webcraping_leis_municipais(query, estado='sc', paginas=1):
         
         try:
             # First attempt with normal settings
-            result = scraper.get(url, timeout=30)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            result = scraper.get(url, headers=headers, timeout=30)
             
             # Check for Cloudflare challenge
             if "Checking your browser before accessing" in result.text:
                 st.warning(f"Cloudflare challenge detected on page {i}. Retrying with different settings...")
                 # Create new scraper with different settings
                 scraper = cloudscraper.create_scraper(delay=10)
-                result = scraper.get(url, timeout=30)
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                result = scraper.get(url, headers=headers, timeout=30)
                 time.sleep(5)  # Additional delay for Cloudflare
             
             result.raise_for_status()
