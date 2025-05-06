@@ -23,12 +23,21 @@ estados_brasileiros = [
 
 def webcraping_leis_municipais(query, estado='sc', paginas=1):
     text_list, links_list, lista_cidades, tipo_da_lei, ano_da_lei = [], [], [], [], []
+    scraper = cloudscraper.create_scraper()  # Create scraper instance
     
     for i in range(1, paginas + 1):
         url = f'https://leisestaduais.com.br/{estado}?q={query}&page={i}&types=&state={estado}&status=&date_start=&date_end=&lm=1'
         try:
-            result = requests.get(url, timeout=10)
+            result = scraper.get(url, timeout=30)  # Increased timeout
             result.raise_for_status()
+            
+            # Check if we got a Cloudflare challenge page
+            if "Checking your browser before accessing" in result.text:
+                st.warning("Cloudflare challenge detected. Retrying with different settings...")
+                # Try with different settings
+                scraper = cloudscraper.create_scraper(delay=10)
+                result = scraper.get(url, timeout=30)
+                
             soup = BeautifulSoup(result.text, 'html.parser')
             leis = soup.find_all(class_="listagem-leis")
             
@@ -42,9 +51,12 @@ def webcraping_leis_municipais(query, estado='sc', paginas=1):
                 lista_cidades.append(lei['href'].split('/')[6])
                 tipo_da_lei.append(lei['href'].split('/')[7])
                 ano_da_lei.append(lei['href'].split('/')[8])
-        except requests.exceptions.RequestException as e:
+                
+        except Exception as e:
             st.error(f"Error accessing page {i}: {str(e)}")
             continue
+    
+    # Rest of your function remains the same...
     
     if not text_list:
         st.error("No laws found with the current search criteria.")
