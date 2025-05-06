@@ -8,3 +8,5 @@ beautifulsoup4>=4.12.0
 geobr>=0.2.1
 wordcloud>=1.8.2.2
 cloudscraper>=1.2.68
+selenium>=4.0.0
+webdriver-manager>=3.8.0
