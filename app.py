@@ -28,7 +28,10 @@ def webcraping_leis_municipais(query, estado='sc', paginas=1):
     for i in range(1, paginas + 1):
         url = f'https://leisestaduais.com.br/{estado}?q={query}&page={i}&types=&state={estado}&status=&date_start=&date_end=&lm=1'
         try:
-            result = scraper.get(url, timeout=30)  # Increased timeout
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            result = scraper.get(url, headers=headers, timeout=30)
             result.raise_for_status()
             
             # Check if we got a Cloudflare challenge page
