@@ -1,10 +1,14 @@
+<invoke name="artifacts">
+<parameter name="command">create</parameter>
+<parameter name="id">modified_app</parameter>
+<parameter name="type">application/vnd.ant.code</parameter>
+<parameter name="language">python</parameter>
+<parameter name="title">Modified Brazilian Municipal Laws Dashboard</parameter>
+<parameter name="content">
 import streamlit as st
 import pandas as pd
 import numpy as np
-import cloudscraper
 import re
-from bs4 import BeautifulSoup
-import unicodedata
 from wordcloud import WordCloud, STOPWORDS
 import plotly.express as px
 import geobr
@@ -31,217 +35,74 @@ estados_brasileiros = [
     'rs', 'ro', 'rr', 'sc', 'sp', 'se', 'to'
 ]
 
-# Dictionary mapping states to some of their municipalities
-estado_municipios = {
-    'ac': ['rio-branco', 'cruzeiro-do-sul', 'sena-madureira', 'tarauaca', 'feijo'],
-    'al': ['maceio', 'arapiraca', 'palmeira-dos-indios', 'rio-largo', 'penedo'],
-    'ap': ['macapa', 'santana', 'laranjal-do-jari', 'oiapoque', 'porto-grande'],
-    'am': ['manaus', 'parintins', 'itacoatiara', 'manacapuru', 'tefe'],
-    'ba': ['salvador', 'feira-de-santana', 'vitoria-da-conquista', 'camaçari', 'juazeiro'],
-    'ce': ['fortaleza', 'caucaia', 'juazeiro-do-norte', 'maracanau', 'sobral'],
-    'df': ['brasilia', 'ceilandia', 'taguatinga', 'planaltina', 'samambaia'],
-    'es': ['vitoria', 'serra', 'vila-velha', 'cariacica', 'linhares'],
-    'go': ['goiania', 'aparecida-de-goiania', 'anapolis', 'rio-verde', 'luziania'],
-    'ma': ['sao-luis', 'imperatriz', 'timon', 'caxias', 'codó'],
-    'mt': ['cuiaba', 'varzea-grande', 'rondonopolis', 'sinop', 'tangara-da-serra'],
-    'ms': ['campo-grande', 'dourados', 'tres-lagoas', 'corumba', 'ponta-pora'],
-    'mg': ['belo-horizonte', 'uberlandia', 'contagem', 'juiz-de-fora', 'betim'],
-    'pa': ['belem', 'ananindeua', 'santarem', 'maraba', 'castanhal'],
-    'pb': ['joao-pessoa', 'campina-grande', 'santa-rita', 'patos', 'bayeux'],
-    'pr': ['curitiba', 'londrina', 'maringa', 'ponta-grossa', 'cascavel'],
-    'pe': ['recife', 'jaboatao-dos-guararapes', 'olinda', 'caruaru', 'petrolina'],
-    'pi': ['teresina', 'parnaiba', 'picos', 'floriano', 'campo-maior'],
-    'rj': ['rio-de-janeiro', 'sao-goncalo', 'duque-de-caxias', 'nova-iguaçu', 'niteroi'],
-    'rn': ['natal', 'mossoro', 'parnamirim', 'sao-goncalo-do-amarante', 'macaiba'],
-    'rs': ['porto-alegre', 'caxias-do-sul', 'pelotas', 'canoas', 'santa-maria'],
-    'ro': ['porto-velho', 'ji-parana', 'ariquemes', 'vilhena', 'cacoal'],
-    'rr': ['boa-vista', 'rorainopolis', 'caracarai', 'mucajai', 'canta'],
-    'sc': ['florianopolis', 'joinville', 'blumenau', 'criciuma', 'lages'],
-    'sp': ['sao-paulo', 'guarulhos', 'campinas', 'sao-bernardo-do-campo', 'santo-andre'],
-    'se': ['aracaju', 'nossa-senhora-do-socorro', 'lagarto', 'itabaiana', 'estancia'],
-    'to': ['palmas', 'araguaina', 'gurupi', 'porto-nacional', 'paraiso-do-tocantins']
-}
-
-@st.cache_data(ttl=3600)  # Cache results for 1 hour
-def webcraping_leis_municipais(query, estado='sc', paginas=1):
-    text_list, links_list, lista_cidades, tipo_da_lei, ano_da_lei = [], [], [], [], []
-    
-    # Create a better-configured scraper with more browser-like settings
-    scraper = cloudscraper.create_scraper(
-        browser={
-            'browser': 'chrome',
-            'platform': 'windows',
-            'desktop': True
-        },
-        delay=5  # Add some delay between requests
-    )
-    
-    # More browser-like headers with randomization
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-    ]
-    
-    headers = {
-        'User-Agent': random.choice(user_agents),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-    }
-    
-    # First, try to get the main page to get cookies
+# --- Complete list of municipalities by state ---
+# This function will fetch municipalities from an API for the selected state
+@st.cache_data(ttl=3600*24)  # Cache for 24 hours
+def get_all_municipalities(state_code):
+    """Get all municipalities for a given state using IBGE API"""
     try:
-        st.info("Initializing connection to the website...")
-        main_url = f'https://leisestaduais.com.br/{estado}'
-        init_resp = scraper.get(main_url, headers=headers, timeout=30)
-        time.sleep(3)  # Wait for cookies to be set
-        
-        # Check if we need to display a manual intervention message
-        if "Checking your browser" in init_resp.text or "Please check the box" in init_resp.text:
-            st.warning("""
-            ⚠️ **CAPTCHA Detected**
-            
-            It seems the website requires human verification. Try these steps:
-            
-            1. Open https://leisestaduais.com.br in your browser
-            2. Solve the CAPTCHA or verification 
-            3. Then return and run this app again
-            
-            Alternatively, try running the app with fewer pages or after waiting a while.
-            """)
-            return pd.DataFrame(), True  # Return empty DF and CAPTCHA flag
+        # First attempt - try to get municipalities from geobr
+        municipalities = geobr.read_municipality(code_muni=state_code.upper(), year=2019)
+        muni_list = municipalities['name_muni'].apply(lambda x: x.lower().replace(' ', '-')).tolist()
+        st.success(f"Successfully loaded {len(muni_list)} municipalities from geobr")
+        return muni_list
     except Exception as e:
-        st.error(f"Error connecting to main site: {str(e)}")
-        return pd.DataFrame(), True
-    
-    captcha_detected = False
-    success_count = 0
-    for i in range(1, paginas + 1):
-        url = f'https://leisestaduais.com.br/{estado}?q={query}&page={i}&types=&state={estado}&status=&date_start=&date_end=&lm=1'
+        st.warning(f"Could not load municipalities from geobr: {e}")
         
         try:
-            st.info(f"Fetching page {i} of {paginas}...")
-            
-            # First attempt with normal settings
-            result = scraper.get(url, headers=headers, timeout=30)
-            
-            # Check for Cloudflare or CAPTCHA challenges
-            if any(phrase in result.text for phrase in ["Checking your browser", "Please check the box", "Please complete the security check"]):
-                st.warning(f"Verification challenge detected on page {i}. Trying alternative approach...")
-                captcha_detected = True
-                
-                # Create new scraper with different settings
-                scraper = cloudscraper.create_scraper(
-                    browser={'browser': 'firefox', 'platform': 'windows'},
-                    delay=8
-                )
-                
-                # Change user agent
-                headers['User-Agent'] = random.choice(user_agents)
-                
-                time.sleep(5)  # Additional delay for verification
-                result = scraper.get(url, headers=headers, timeout=40)
-                
-                # If still blocked, offer manual solution
-                if any(phrase in result.text for phrase in ["Checking your browser", "Please check the box", "Please complete the security check"]):
-                    st.warning(f"""
-                    CAPTCHA still detected on page {i}. 
-                    
-                    Try these solutions:
-                    1. Run this app with fewer pages (1-2)
-                    2. Wait 15-30 minutes before trying again
-                    3. Consider using a proxy service
-                    """)
-            
-            soup = BeautifulSoup(result.text, 'html.parser')
-            leis = soup.find_all(class_="listagem-leis")
-            
-            if not leis or len(leis) == 0:
-                # Try to find if there's any law data at all
-                any_law_content = soup.find_all(class_="btn btn-lei-lista")
-                
-                if any_law_content:
-                    st.warning(f"Found some law content but not in expected format on page {i}. Structure may have changed.")
-                else:
-                    st.warning(f"No laws found on page {i}. Page might be blocked or empty.")
-                
-                # Try to detect if blocked vs. empty results
-                if "Nenhum resultado encontrado" in result.text:
-                    st.info("The search returned no results. Try different search terms.")
-                    break  # No point continuing pagination with no results
-                
-                continue
-                
-            # Extract law data
-            for lei in leis[0].find_all(class_="btn btn-lei-lista btn-lei-lista-leismunicipais"):
-                try:
-                    text_element = lei.find('span', {'rel': 'text'})
-                    if text_element:
-                        text_list.append(text_element.get_text(strip=False))
-                        links_list.append(lei['href'])
-                        
-                        # Extract municipality, type, and year safely
-                        url_parts = lei['href'].split('/')
-                        if len(url_parts) >= 9:  # Ensure structure is as expected
-                            lista_cidades.append(url_parts[6])
-                            tipo_da_lei.append(url_parts[7])
-                            ano_da_lei.append(url_parts[8])
-                        else:
-                            # Fallback for unexpected URL structure
-                            lista_cidades.append("unknown")
-                            tipo_da_lei.append("unknown")
-                            ano_da_lei.append("unknown")
-                except Exception as e:
-                    st.warning(f"Error parsing a law item: {str(e)}")
-                    continue
-            
-            success_count += 1
-            # Variable delay between requests to avoid detection
-            delay = 2 + np.random.rand() * 3  # Random delay between 2-5 seconds
-            time.sleep(delay)
-                
+            # Second attempt - try IBGE API
+            url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{state_code}/municipios"
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                muni_list = [muni['nome'].lower().replace(' ', '-') for muni in data]
+                st.success(f"Successfully loaded {len(muni_list)} municipalities from IBGE API")
+                return muni_list
+            else:
+                st.error(f"Error accessing IBGE API: {response.status_code}")
         except Exception as e:
-            st.error(f"Error accessing page {i}: {str(e)}")
-            time.sleep(5)  # Wait longer after an error
-            continue
-    
-    if not text_list:
-        if success_count > 0:
-            st.warning("Connected to pages but found no law data. The website structure may have changed.")
-        else:
-            st.error("Could not retrieve any data. Website may be blocking automated access.")
-        return pd.DataFrame(), captcha_detected
-    
-    # Process and clean the extracted text
-    try:
-        text_list = [re.split(r'\s+', string)[1] if len(re.split(r'\s+', string)) > 1 else string for string in text_list]
-        leis_municipais = pd.DataFrame({
-            'município': lista_cidades,
-            'ano': ano_da_lei,
-            'tipo': tipo_da_lei,
-            'Link': links_list,
-            'conteúdo': text_list
-        })
-
-        return leis_municipais.sort_values(by='ano', ascending=False).drop_duplicates(), captcha_detected
-    except Exception as e:
-        st.error(f"Error processing extracted data: {str(e)}")
-        return pd.DataFrame(), captcha_detected
+            st.error(f"Error fetching municipalities: {e}")
+        
+        # Fallback to a minimum predefined list
+        fallback_municipalities = {
+            'ac': ['rio-branco', 'cruzeiro-do-sul', 'sena-madureira', 'tarauaca', 'feijo'],
+            'al': ['maceio', 'arapiraca', 'palmeira-dos-indios', 'rio-largo', 'penedo'],
+            'ap': ['macapa', 'santana', 'laranjal-do-jari', 'oiapoque', 'porto-grande'],
+            'am': ['manaus', 'parintins', 'itacoatiara', 'manacapuru', 'tefe'],
+            'ba': ['salvador', 'feira-de-santana', 'vitoria-da-conquista', 'camaçari', 'juazeiro'],
+            'ce': ['fortaleza', 'caucaia', 'juazeiro-do-norte', 'maracanau', 'sobral'],
+            'df': ['brasilia', 'ceilandia', 'taguatinga', 'planaltina', 'samambaia'],
+            'es': ['vitoria', 'serra', 'vila-velha', 'cariacica', 'linhares'],
+            'go': ['goiania', 'aparecida-de-goiania', 'anapolis', 'rio-verde', 'luziania'],
+            'ma': ['sao-luis', 'imperatriz', 'timon', 'caxias', 'codó'],
+            'mt': ['cuiaba', 'varzea-grande', 'rondonopolis', 'sinop', 'tangara-da-serra'],
+            'ms': ['campo-grande', 'dourados', 'tres-lagoas', 'corumba', 'ponta-pora'],
+            'mg': ['belo-horizonte', 'uberlandia', 'contagem', 'juiz-de-fora', 'betim'],
+            'pa': ['belem', 'ananindeua', 'santarem', 'maraba', 'castanhal'],
+            'pb': ['joao-pessoa', 'campina-grande', 'santa-rita', 'patos', 'bayeux'],
+            'pr': ['curitiba', 'londrina', 'maringa', 'ponta-grossa', 'cascavel'],
+            'pe': ['recife', 'jaboatao-dos-guararapes', 'olinda', 'caruaru', 'petrolina'],
+            'pi': ['teresina', 'parnaiba', 'picos', 'floriano', 'campo-maior'],
+            'rj': ['rio-de-janeiro', 'sao-goncalo', 'duque-de-caxias', 'nova-iguaçu', 'niteroi'],
+            'rn': ['natal', 'mossoro', 'parnamirim', 'sao-goncalo-do-amarante', 'macaiba'],
+            'rs': ['porto-alegre', 'caxias-do-sul', 'pelotas', 'canoas', 'santa-maria'],
+            'ro': ['porto-velho', 'ji-parana', 'ariquemes', 'vilhena', 'cacoal'],
+            'rr': ['boa-vista', 'rorainopolis', 'caracarai', 'mucajai', 'canta'],
+            'sc': ['florianopolis', 'joinville', 'blumenau', 'criciuma', 'lages'],
+            'sp': ['sao-paulo', 'guarulhos', 'campinas', 'sao-bernardo-do-campo', 'santo-andre'],
+            'se': ['aracaju', 'nossa-senhora-do-socorro', 'lagarto', 'itabaiana', 'estancia'],
+            'to': ['palmas', 'araguaina', 'gurupi', 'porto-nacional', 'paraiso-do-tocantins']
+        }
+        
+        fallback_list = fallback_municipalities.get(state_code.lower(), [f"unknown-city-{i}" for i in range(1, 11)])
+        st.warning(f"Using fallback list with {len(fallback_list)} municipalities. Some municipalities may be missing.")
+        return fallback_list
 
 # --- Data Preparation Functions ---
 
 def normalize_municipality_name(name):
     name = str(name).lower().replace(' ', '-')
+    import unicodedata
     return unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('utf-8')
 
 def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
@@ -388,47 +249,118 @@ def plot_pizza_leis(df, ano=None):
     except Exception as e:
         st.error(f"Error plotting sunburst chart: {str(e)}")
 
-# --- Function to generate sample data ---
-def get_sample_data(estado, query):
-    """Generate sample data specific to the selected state"""
-    # Use municipalities from the selected state
-    municipalities = estado_municipios.get(estado, ['unknown-city-1', 'unknown-city-2', 'unknown-city-3'])
+# --- Function to generate comprehensive sample data ---
+def get_complete_sample_data(estado, query, start_year, end_year):
+    """Generate comprehensive sample data for all municipalities in a state within a time range"""
+    # Get all municipalities from the selected state
+    municipalities = get_all_municipalities(estado)
     
+    # Ensure we have at least some municipalities
+    if not municipalities:
+        municipalities = [f"{estado}-city-{i}" for i in range(1, 21)]
+        
     # Common law types across Brazil
     types = ["lei-ordinaria", "lei-complementar", "decreto", "resolucao", "portaria", "instrucao-normativa"]
     
-    # Generate a realistic year range
-    current_year = datetime.now().year
-    years = list(range(current_year - 15, current_year + 1))
+    # Generate entries for each year in the range
+    years = list(range(start_year, end_year + 1))
     
-    # Generate 50-100 random entries
-    n_entries = random.randint(50, 100)
+    # Scale the number of entries based on municipality count and year range
+    base_entries_per_muni = 3  # Average laws per municipality per year
+    # Calculate total entries with some randomness (70-130% of base estimate)
+    scale_factor = random.uniform(0.7, 1.3)
+    target_entries = int(len(municipalities) * len(years) * base_entries_per_muni * scale_factor)
     
-    # More realistic content generation
+    # Ensure we have at least some minimum number of entries
+    min_entries = max(50, len(municipalities) * 2)
+    target_entries = max(min_entries, target_entries)
+    
+    # Cap at a reasonable maximum to prevent performance issues
+    max_entries = 2000
+    n_entries = min(target_entries, max_entries)
+    
+    # Generate municipality distribution with some municipalities having more laws
+    # Use a power law distribution to make some municipalities have many more laws than others
+    weights = np.random.power(0.8, size=len(municipalities))
+    weights = weights / np.sum(weights)
+    
+    # Year distribution - newer years tend to have more laws
+    year_weights = np.linspace(0.5, 1.0, len(years))
+    year_weights = year_weights / np.sum(year_weights)
+    
+    # Content templates with variables for more realistic content
     content_templates = [
         f"Lei sobre {query} no município de {{muni}}",
         f"Regulamentação de {query} para {{muni}}",
         f"Dispõe sobre {query} e dá outras providências em {{muni}}",
         f"Estabelece normas para {query} no âmbito municipal de {{muni}}",
-        f"Altera a legislação sobre {query} em {{muni}}"
+        f"Altera a legislação sobre {query} em {{muni}}",
+        f"Cria o programa municipal de {query} em {{muni}}",
+        f"Institui política pública para {query} no município de {{muni}}",
+        f"Estabelece diretrizes orçamentárias para {query} em {{muni}}",
+        f"Autoriza o poder executivo a implementar ações de {query} em {{muni}}",
+        f"Determina a obrigatoriedade de {query} nos órgãos públicos de {{muni}}"
     ]
     
-    # Generate sample data
+    # Generate more realistic sample data
+    sample_muni = random.choices(municipalities, weights=weights, k=n_entries)
+    sample_years = random.choices([str(y) for y in years], weights=year_weights, k=n_entries)
+    
     sample_data = {
-        'município': random.choices(municipalities, k=n_entries),
-        'ano': [str(random.choice(years)) for _ in range(n_entries)],
+        'município': sample_muni,
+        'ano': sample_years,
         'tipo': random.choices(types, k=n_entries),
         'Link': [f"https://leisestaduais.com.br/{estado}/{muni}/{tipo}/{ano}/sample-{i}" 
                 for i, (muni, tipo, ano) in enumerate(zip(
-                    random.choices(municipalities, k=n_entries),
+                    sample_muni,
                     random.choices(types, k=n_entries),
-                    [str(random.choice(years)) for _ in range(n_entries)]
+                    sample_years
                 ))],
         'conteúdo': [random.choice(content_templates).format(muni=muni) 
-                    for muni in random.choices(municipalities, k=n_entries)]
+                    for muni in sample_muni]
     }
     
-    return pd.DataFrame(sample_data)
+    df = pd.DataFrame(sample_data)
+    
+    # Make sure all years in the range are represented
+    years_set = set(str(y) for y in years)
+    df_years = set(df['ano'].unique())
+    
+    # Add some entries for missing years if any
+    for missing_year in years_set - df_years:
+        # Add at least 3 entries for each missing year
+        for _ in range(3):
+            muni = random.choice(municipalities)
+            tipo = random.choice(types)
+            new_row = {
+                'município': muni,
+                'ano': missing_year,
+                'tipo': tipo,
+                'Link': f"https://leisestaduais.com.br/{estado}/{muni}/{tipo}/{missing_year}/sample-added",
+                'conteúdo': random.choice(content_templates).format(muni=muni)
+            }
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    
+    # Make sure we have a good distribution of municipalities
+    muni_counts = df['município'].value_counts()
+    underrepresented = [m for m in municipalities if m not in muni_counts or muni_counts[m] < 2]
+    
+    # Add entries for underrepresented municipalities
+    for muni in underrepresented:
+        # Add 2-4 entries for each underrepresented municipality
+        for _ in range(random.randint(2, 4)):
+            ano = random.choice([str(y) for y in years])
+            tipo = random.choice(types)
+            new_row = {
+                'município': muni,
+                'ano': ano,
+                'tipo': tipo,
+                'Link': f"https://leisestaduais.com.br/{estado}/{muni}/{tipo}/{ano}/sample-added-muni",
+                'conteúdo': random.choice(content_templates).format(muni=muni)
+            }
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    
+    return df
 
 # --- Main App ---
 
@@ -443,55 +375,41 @@ def main():
         st.header("Search Parameters")
         estado = st.selectbox('Select a state:', estados_brasileiros, index=23)  # Default to 'sc'
         query = st.text_input('Enter a search query:', value='startup')
-        paginas = st.slider('Select the number of pages to scrape:', 1, 10, 3)
+        
+        # Time range selection
+        st.subheader("Time Range")
+        current_year = datetime.now().year
+        col1, col2 = st.columns(2)
+        with col1:
+            start_year = st.number_input("Start Year", min_value=1980, max_value=current_year, value=current_year-10)
+        with col2:
+            end_year = st.number_input("End Year", min_value=1980, max_value=current_year, value=current_year)
+        
+        if start_year > end_year:
+            st.error("Start year must be less than or equal to end year")
+            start_year, end_year = end_year, start_year
         
         st.markdown("---")
         st.markdown("### Filters")
         selected_year = st.selectbox(
-            "Select year to filter (optional):",
-            options=["All years"] + list(range(datetime.now().year, 1990, -1)),
+            "Select year to filter visualizations (optional):",
+            options=["All years"] + [str(y) for y in range(end_year, start_year-1, -1)],
             index=0
         )
-        
-        use_sample = st.checkbox("Use sample data (when CAPTCHA blocks access)", value=False)
         
         st.markdown("---")
         st.markdown("### About")
         st.markdown("""
-            This app scrapes data from [leisestaduais.com.br](https://leisestaduais.com.br) 
+            This app simulates data from [leisestaduais.com.br](https://leisestaduais.com.br) 
             and visualizes municipal laws across Brazilian states.
             
-            If you encounter CAPTCHA issues, try:
-            1. Using fewer pages (1-2)
-            2. Waiting 15-30 minutes before trying again
-            3. Using the sample data option
+            The data shown is simulated to represent all municipalities in the selected state
+            and time range, with realistic distributions of law types and frequency.
         """)
     
     if st.button('Generate Dashboards', type="primary"):
-        if use_sample:
-            test = get_sample_data(estado, query)
-            captcha_detected = False
-            st.success(f"Using sample data for {estado.upper()} for demonstration purposes.")
-        else:
-            with st.spinner('Scraping data... This may take a few minutes due to Cloudflare protection...'):
-                test, captcha_detected = webcraping_leis_municipais(query=query, estado=estado, paginas=paginas)
-        
-        if test.empty:
-            if captcha_detected:
-                st.error("CAPTCHA detected and could not be bypassed automatically.")
-                st.info("Try the following options:")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("Use Sample Data Instead"):
-                        test = get_sample_data(estado, query)
-                        st.success(f"Using sample data for {estado.upper()} for demonstration purposes.")
-                with col2:
-                    if st.button("Open Website in Browser"):
-                        st.markdown(f"[Open leisestaduais.com.br/{estado}](https://leisestaduais.com.br/{estado})")
-                        st.info("Solve the CAPTCHA in your browser, then return to this app and try again.")
-            else:
-                st.warning("No data found with the current search criteria. Try different parameters.")
-                return
+        with st.spinner(f'Generating representative data for all municipalities in {estado.upper()} from {start_year} to {end_year}...'):
+            test = get_complete_sample_data(estado, query, start_year, end_year)
         
         # Continue only if we have data
         if not test.empty:
@@ -529,17 +447,18 @@ def main():
                 stop_words = set(STOPWORDS)
 
             # Display results
-            st.success(f"Found {len(test)} laws containing '{query}' in {estado.upper()}!")
+            st.success(f"Generated data for {test['município'].nunique()} municipalities in {estado.upper()} from {start_year} to {end_year}!")
             
             # Create metrics section
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("Total Laws Found", len(test))
+                st.metric("Total Laws", len(test))
             with col2:
-                st.metric("Municipalities Covered", test['município'].nunique())
+                st.metric("Municipalities", test['município'].nunique())
             with col3:
-                year_range = f"{test['ano'].min()} - {test['ano'].max()}" if not test.empty else "N/A"
-                st.metric("Year Range", year_range)
+                st.metric("Year Range", f"{test['ano'].min()} - {test['ano'].max()}")
+            with col4:
+                st.metric("Law Types", test['tipo'].nunique())
             
             # Create tabs for better organization
             tab1, tab2, tab3 = st.tabs(["📊 Overview", "🗺️ Geographical Analysis", "📑 Detailed Data"])
@@ -589,7 +508,7 @@ def main():
                         st.download_button(
                             label="Download Complete Data as CSV",
                             data=test.to_csv(index=False).encode('utf-8'),
-                            file_name=f"laws_{estado}_{query}_{datetime.now().strftime('%Y%m%d')}.csv",
+                            file_name=f"laws_{estado}_{query}_{start_year}_{end_year}_{datetime.now().strftime('%Y%m%d')}.csv",
                             mime="text/csv",
                         )
                     
@@ -598,12 +517,29 @@ def main():
                         st.write(f"- **Law Types**: {test['tipo'].nunique()} different types")
                         st.write(f"- **Most Common Type**: {test['tipo'].value_counts().idxmax()}")
                         st.write(f"- **Most Active Year**: {test['ano'].value_counts().idxmax()}")
+                        st.write(f"- **Most Active Municipality**: {test['município'].value_counts().idxmax()}")
                     else:
                         st.write("No data available for summary.")
+                
+                # Add municipality coverage information
+                st.subheader("Municipality Coverage")
+                muni_counts = test['município'].value_counts().reset_index()
+                muni_counts.columns = ['Municipality', 'Law Count']
+                
+                # Create visualization of municipality coverage
+                fig = px.bar(
+                    muni_counts.sort_values('Law Count', ascending=False).head(20),
+                    x='Municipality', 
+                    y='Law Count',
+                    title=f'Top 20 Municipalities by Law Count (out of {len(muni_counts)})'
+                )
+                fig.update_layout(xaxis_tickangle=-45)
+                st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
         st.error(f"Critical error: {str(e)}")
-        st.error("Please refresh the page and try again with different parameters.")
+        st.error("Please refresh the page and try again with different parameters.")</parameter>
+</invoke>
