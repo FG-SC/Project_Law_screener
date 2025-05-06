@@ -7,3 +7,7 @@ requests<=2.32.3
 beautifulsoup4
 geobr<=0.2.1
 wordcloud<=1.9.2
+distutils
+
+
+
