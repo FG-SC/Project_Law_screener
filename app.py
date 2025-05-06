@@ -11,6 +11,7 @@ import geobr
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from datetime import datetime
+import cloudscraper
 
 # --- Data Collection Functions ---
 
