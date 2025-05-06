@@ -31,6 +31,37 @@ estados_brasileiros = [
     'rs', 'ro', 'rr', 'sc', 'sp', 'se', 'to'
 ]
 
+# Dictionary mapping states to some of their municipalities
+estado_municipios = {
+    'ac': ['rio-branco', 'cruzeiro-do-sul', 'sena-madureira', 'tarauaca', 'feijo'],
+    'al': ['maceio', 'arapiraca', 'palmeira-dos-indios', 'rio-largo', 'penedo'],
+    'ap': ['macapa', 'santana', 'laranjal-do-jari', 'oiapoque', 'porto-grande'],
+    'am': ['manaus', 'parintins', 'itacoatiara', 'manacapuru', 'tefe'],
+    'ba': ['salvador', 'feira-de-santana', 'vitoria-da-conquista', 'camaçari', 'juazeiro'],
+    'ce': ['fortaleza', 'caucaia', 'juazeiro-do-norte', 'maracanau', 'sobral'],
+    'df': ['brasilia', 'ceilandia', 'taguatinga', 'planaltina', 'samambaia'],
+    'es': ['vitoria', 'serra', 'vila-velha', 'cariacica', 'linhares'],
+    'go': ['goiania', 'aparecida-de-goiania', 'anapolis', 'rio-verde', 'luziania'],
+    'ma': ['sao-luis', 'imperatriz', 'timon', 'caxias', 'codó'],
+    'mt': ['cuiaba', 'varzea-grande', 'rondonopolis', 'sinop', 'tangara-da-serra'],
+    'ms': ['campo-grande', 'dourados', 'tres-lagoas', 'corumba', 'ponta-pora'],
+    'mg': ['belo-horizonte', 'uberlandia', 'contagem', 'juiz-de-fora', 'betim'],
+    'pa': ['belem', 'ananindeua', 'santarem', 'maraba', 'castanhal'],
+    'pb': ['joao-pessoa', 'campina-grande', 'santa-rita', 'patos', 'bayeux'],
+    'pr': ['curitiba', 'londrina', 'maringa', 'ponta-grossa', 'cascavel'],
+    'pe': ['recife', 'jaboatao-dos-guararapes', 'olinda', 'caruaru', 'petrolina'],
+    'pi': ['teresina', 'parnaiba', 'picos', 'floriano', 'campo-maior'],
+    'rj': ['rio-de-janeiro', 'sao-goncalo', 'duque-de-caxias', 'nova-iguaçu', 'niteroi'],
+    'rn': ['natal', 'mossoro', 'parnamirim', 'sao-goncalo-do-amarante', 'macaiba'],
+    'rs': ['porto-alegre', 'caxias-do-sul', 'pelotas', 'canoas', 'santa-maria'],
+    'ro': ['porto-velho', 'ji-parana', 'ariquemes', 'vilhena', 'cacoal'],
+    'rr': ['boa-vista', 'rorainopolis', 'caracarai', 'mucajai', 'canta'],
+    'sc': ['florianopolis', 'joinville', 'blumenau', 'criciuma', 'lages'],
+    'sp': ['sao-paulo', 'guarulhos', 'campinas', 'sao-bernardo-do-campo', 'santo-andre'],
+    'se': ['aracaju', 'nossa-senhora-do-socorro', 'lagarto', 'itabaiana', 'estancia'],
+    'to': ['palmas', 'araguaina', 'gurupi', 'porto-nacional', 'paraiso-do-tocantins']
+}
+
 @st.cache_data(ttl=3600)  # Cache results for 1 hour
 def webcraping_leis_municipais(query, estado='sc', paginas=1):
     text_list, links_list, lista_cidades, tipo_da_lei, ano_da_lei = [], [], [], [], []
@@ -357,20 +388,32 @@ def plot_pizza_leis(df, ano=None):
     except Exception as e:
         st.error(f"Error plotting sunburst chart: {str(e)}")
 
-# --- Function to check and handle sample data ---
+# --- Function to generate sample data ---
 def get_sample_data(estado, query):
-    """Use sample data when CAPTCHA blocks access"""
-    # In a real app, you'd have sample data stored somewhere
-    # For now we'll generate some mock data
-    municipalities = ["florianopolis", "joinville", "blumenau", "criciuma", "lages", 
-                     "chapeco", "itajai", "jaragua-do-sul", "sao-jose", "palhoca"]
+    """Generate sample data specific to the selected state"""
+    # Use municipalities from the selected state
+    municipalities = estado_municipios.get(estado, ['unknown-city-1', 'unknown-city-2', 'unknown-city-3'])
     
-    types = ["lei-ordinaria", "lei-complementar", "decreto", "resolucao"]
-    years = list(range(2010, 2025))
+    # Common law types across Brazil
+    types = ["lei-ordinaria", "lei-complementar", "decreto", "resolucao", "portaria", "instrucao-normativa"]
+    
+    # Generate a realistic year range
+    current_year = datetime.now().year
+    years = list(range(current_year - 15, current_year + 1))
     
     # Generate 50-100 random entries
     n_entries = random.randint(50, 100)
     
+    # More realistic content generation
+    content_templates = [
+        f"Lei sobre {query} no município de {{muni}}",
+        f"Regulamentação de {query} para {{muni}}",
+        f"Dispõe sobre {query} e dá outras providências em {{muni}}",
+        f"Estabelece normas para {query} no âmbito municipal de {{muni}}",
+        f"Altera a legislação sobre {query} em {{muni}}"
+    ]
+    
+    # Generate sample data
     sample_data = {
         'município': random.choices(municipalities, k=n_entries),
         'ano': [str(random.choice(years)) for _ in range(n_entries)],
@@ -381,7 +424,8 @@ def get_sample_data(estado, query):
                     random.choices(types, k=n_entries),
                     [str(random.choice(years)) for _ in range(n_entries)]
                 ))],
-        'conteúdo': [f"Lei sobre {query} em {muni}" for muni in random.choices(municipalities, k=n_entries)]
+        'conteúdo': [random.choice(content_templates).format(muni=muni) 
+                    for muni in random.choices(municipalities, k=n_entries)]
     }
     
     return pd.DataFrame(sample_data)
@@ -427,7 +471,7 @@ def main():
         if use_sample:
             test = get_sample_data(estado, query)
             captcha_detected = False
-            st.success("Using sample data for demonstration purposes.")
+            st.success(f"Using sample data for {estado.upper()} for demonstration purposes.")
         else:
             with st.spinner('Scraping data... This may take a few minutes due to Cloudflare protection...'):
                 test, captcha_detected = webcraping_leis_municipais(query=query, estado=estado, paginas=paginas)
@@ -440,7 +484,7 @@ def main():
                 with col1:
                     if st.button("Use Sample Data Instead"):
                         test = get_sample_data(estado, query)
-                        st.success("Using sample data for demonstration purposes.")
+                        st.success(f"Using sample data for {estado.upper()} for demonstration purposes.")
                 with col2:
                     if st.button("Open Website in Browser"):
                         st.markdown(f"[Open leisestaduais.com.br/{estado}](https://leisestaduais.com.br/{estado})")
