@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import requests
+import cloudscraper
 import re
 from bs4 import BeautifulSoup
 import unicodedata
@@ -11,7 +11,7 @@ import geobr
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from datetime import datetime
-import cloudscraper
+import time
 
 # --- Data Collection Functions ---
 
@@ -24,24 +24,24 @@ estados_brasileiros = [
 
 def webcraping_leis_municipais(query, estado='sc', paginas=1):
     text_list, links_list, lista_cidades, tipo_da_lei, ano_da_lei = [], [], [], [], []
-    scraper = cloudscraper.create_scraper()  # Create scraper instance
+    scraper = cloudscraper.create_scraper()
     
     for i in range(1, paginas + 1):
         url = f'https://leisestaduais.com.br/{estado}?q={query}&page={i}&types=&state={estado}&status=&date_start=&date_end=&lm=1'
+        
         try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            result = scraper.get(url, headers=headers, timeout=30)
-            result.raise_for_status()
+            # First attempt with normal settings
+            result = scraper.get(url, timeout=30)
             
-            # Check if we got a Cloudflare challenge page
+            # Check for Cloudflare challenge
             if "Checking your browser before accessing" in result.text:
-                st.warning("Cloudflare challenge detected. Retrying with different settings...")
-                # Try with different settings
+                st.warning(f"Cloudflare challenge detected on page {i}. Retrying with different settings...")
+                # Create new scraper with different settings
                 scraper = cloudscraper.create_scraper(delay=10)
                 result = scraper.get(url, timeout=30)
-                
+                time.sleep(5)  # Additional delay for Cloudflare
+            
+            result.raise_for_status()
             soup = BeautifulSoup(result.text, 'html.parser')
             leis = soup.find_all(class_="listagem-leis")
             
@@ -56,11 +56,12 @@ def webcraping_leis_municipais(query, estado='sc', paginas=1):
                 tipo_da_lei.append(lei['href'].split('/')[7])
                 ano_da_lei.append(lei['href'].split('/')[8])
                 
+            # Small delay between requests
+            time.sleep(2)
+                
         except Exception as e:
             st.error(f"Error accessing page {i}: {str(e)}")
             continue
-    
-    # Rest of your function remains the same...
     
     if not text_list:
         st.error("No laws found with the current search criteria.")
@@ -223,7 +224,7 @@ def main():
         st.header("Search Parameters")
         estado = st.selectbox('Select a state:', estados_brasileiros, index=23)  # Default to 'sc'
         query = st.text_input('Enter a search query:', value='startup')
-        paginas = st.slider('Select the number of pages to scrape:', 1, 50, 5)
+        paginas = st.slider('Select the number of pages to scrape:', 1, 10, 3)
         
         st.markdown("---")
         st.markdown("### Filters")
@@ -241,7 +242,7 @@ def main():
         """)
     
     if st.button('Generate Dashboards', type="primary"):
-        with st.spinner('Scraping data... This may take a few minutes...'):
+        with st.spinner('Scraping data... This may take a few minutes due to Cloudflare protection...'):
             test = webcraping_leis_municipais(query=query, estado=estado, paginas=paginas)
         
         if test.empty:
