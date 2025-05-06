@@ -1,10 +1,3 @@
-<invoke name="artifacts">
-<parameter name="command">create</parameter>
-<parameter name="id">modified_app</parameter>
-<parameter name="type">application/vnd.ant.code</parameter>
-<parameter name="language">python</parameter>
-<parameter name="title">Modified Brazilian Municipal Laws Dashboard</parameter>
-<parameter name="content">
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -541,5 +534,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"Critical error: {str(e)}")
-        st.error("Please refresh the page and try again with different parameters.")</parameter>
-</invoke>
+        st.error("Please refresh the page and try again with different parameters.")
